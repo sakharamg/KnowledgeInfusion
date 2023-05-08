@@ -1,4 +1,4 @@
 Name: \
 Roll no.: \
-Ttle of Thesis: \
+Title of Thesis: \
 Abstract: 
