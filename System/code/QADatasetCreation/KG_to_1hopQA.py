@@ -7,6 +7,8 @@ from time import sleep
 KG = pd.read_csv("data/aviationKG/aviationKG.txt", sep='\t',
                  header=0, names=["head", "relation", "tail"], na_values=None)
 
+KG = KG.replace('|', '')
+
 
 def print_stats(KG):
     print(KG['head'].value_counts())
@@ -19,15 +21,15 @@ remove_head = []
 remove_relation = []
 remove_tail = []
 # Remove relation named type which had mostly Named_Individual and Accident_Number, and links
-remove_relation.extend(["type", "http://purl.org/dc/elements/1.1/description",
-                       "http://purl.org/dc/elements/1.1/source", "comment", "label", "subPropertyOf", "range", "domain", "seeAlso", "subClassOf", "defintion"])
+remove_relation.extend(["type", "http://purl.org/dc/elements/1.1/description", "unitOfAge",
+                       "http://purl.org/dc/elements/1.1/source", "unitOfRunwayWidth","hasTurbulenceActual","hasTurbulenceForecast","hasTurbulenceSeverityActual","hasTurbulenceSeverityForecast","comment", "label","hasDefiningEvent","unitOfLongitude","unitOfLatitude", "subPropertyOf", "range", "domain", "seeAlso", "subClassOf", "defintion"])
 # Remove reltation which occurs upto 5 times
 rem_count = 5
 for i in range(20):
     remove_relation.extend(list(KG['relation'].value_counts()[
                            KG['relation'].value_counts() <= rem_count].keys()))
-    remove_tail.extend(["true", "false", "None"])
-    
+    remove_tail.extend(["true", "false", "None","degreeCelsius","degreeunitOfangle","foot","footOfMercury","Glider","Helicopter","horsepower(boiler)","hour","knot","mile(statutemile)","nauticalMile","None None","Onfile","pound","Unknown","___Unknown___ObservationFacility","___Unknown___OtherAircraftRating","___Unknown___PersonnelIssue","___Unknown___VisibilityRVR","year"])
+
     # ^.*-.*-.*:.*:.*$
     remove_head.extend(list(KG['head'].value_counts()[
                        KG['head'].value_counts() <= rem_count].keys()))
@@ -75,13 +77,20 @@ KG = KG.drop_duplicates()
 # print(re.search("^.*-.*-.*:.*:.*$", '2001-08-02T12:05:00') )
 openai.api_key = ""
 relation_dict = {}
-for index, triple in tqdm(KG.iterrows()):
+er_dict = {}
+relation_many_ans = []
+for index, triple in KG.iterrows():
     head, relation, tail = triple["head"], triple["relation"], triple["tail"]
     try:
         relation_dict[relation].append((head, relation, tail))
     except:
-        relation_dict[relation] = []
-
+        relation_dict[relation] = [(head, relation, tail)]
+    try:
+        er_dict[(head, relation)].append((head, relation, tail))
+        relation_many_ans.append(relation)
+    except:
+        er_dict[(head, relation)] = [(head, relation, tail)]
+print(len(set(er_dict.keys())))
 questions = []
 heads = []
 relations = []
@@ -101,7 +110,7 @@ for key in tqdm(relation_dict.keys()):
                     "Convert the 'Entity' and 'Relation' to question. Keep Head in question and enclose in square brackets [ and ].\n Example: Entity: AccidentNumber_IAD05LA001 Relation: hasFederalAviationRegulation. Your response must be 'What is the Federal Aviation Regulation associated with [AccidentNumber_IAD05LA001]?'  Here Entity, AccidentNumber_IAD05LA001 is in [ and ] "}
             ]
         )
-    # print(completion.choices[0])
+    print(completion.choices[0])
     except:
         print("Exception. Retrying in 60 seconds!")
         sleep(60)
@@ -121,9 +130,9 @@ df = pd.DataFrame(details, columns=[
 df.to_csv("data/AeroQA/1hop_template.csv",
             index=False)
 
-'''
-FIXED TEMLATES MANUALLY AND THEN...
-'''
+# '''
+# FIXED TEMLATES MANUALLY AND THEN...
+# '''
 
 heads = []
 relations = []
@@ -139,7 +148,7 @@ for index, triple in tqdm(KG.iterrows()):
     head, relation, tail = triple["head"], triple["relation"], triple["tail"]
     heads.append(head)
     relations.append(relation)
-    questions.append(templates_dict[relation].replace("[HEAD]","["+head+"]"))
+    questions.append(templates_dict[relation].replace("[HEAD]", "["+head+"]"))
     answers.append(tail)
     tails.append(tail)
 details = {
@@ -151,7 +160,7 @@ details = {
 }
 
 df = pd.DataFrame(details, columns=[
-    'head', 'relation', 'tail', 'question','answer'])
+    'head', 'relation', 'tail', 'question', 'answer'])
 df.to_csv("data/AeroQA/1hop_with_head_relation_tail.csv",
           index=False)
 details = {
@@ -160,5 +169,15 @@ details = {
 }
 df = pd.DataFrame(details, columns=[
     'question', 'answer'])
-df.to_csv("data/AeroQA/1hop.csv",
-          index=False)
+
+df1 = df.groupby(['question'])['answer'].apply('|'.join).reset_index()
+df2 = pd.DataFrame(df1, columns=[
+    'question', 'answer'])
+df2.to_csv("data/AeroQA/1hop_multi.csv",
+           index=False)
+df2.sample(frac = 1).to_csv("data/AeroQA/1hop_multi_shuff.csv",
+           index=False)
+           
+'''
+Then manually cleaned the QA pairs which had invalid answer.
+'''
